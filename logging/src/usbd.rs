@@ -168,11 +168,13 @@ pub(crate) unsafe fn init<P: imxrt_usbd::Peripherals>(
     }
 
     {
+        let strings = usb_device::device::StringDescriptors::default().product(PRODUCT);
         let device = usb_device::device::UsbDeviceBuilder::new(bus, VID_PID)
-            .product(PRODUCT)
             .device_class(usbd_serial::USB_CLASS_CDC)
             .max_packet_size_0(EP0_CONTROL_PACKET_SIZE as u8)
-            .build();
+            .and_then(|d| d.strings(&[strings]))
+            .map(usb_device::device::UsbDeviceBuilder::build)
+            .expect("bad usb device configuration");
 
         // Not sure which endpoints the CDC ACM class will pick,
         // so enable the setting for all non-zero endpoints.

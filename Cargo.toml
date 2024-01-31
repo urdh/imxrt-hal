@@ -127,6 +127,10 @@ codegen-units = 256
 opt-level = 0
 codegen-units = 256
 
+[patch.crates-io.imxrt-usbd]
+git = "https://github.com/urdh/imxrt-usbd.git"
+branch = "bump-usb-device"
+
 ######################################
 # Configurations for hardware examples
 ######################################
