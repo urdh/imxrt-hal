@@ -10,10 +10,11 @@ const PRODUCT: &str = "imxrt-log";
 ///
 /// If you start noticing panics, check to make sure that this buffer
 /// is large enough for all the max packet sizes for all the endpoints.
-const ENDPOINT_BYTES: usize = MAX_PACKET_SIZE * 2 + EP0_CONTROL_PACKET_SIZE * 2 + 128;
+const ENDPOINT_BYTES: usize =
+    MAX_INTERFACES * MAX_PACKET_SIZE * 2 + EP0_CONTROL_PACKET_SIZE * 2 + 128;
 static ENDPOINT_MEMORY: imxrt_usbd::EndpointMemory<ENDPOINT_BYTES> =
     imxrt_usbd::EndpointMemory::new();
-static ENDPOINT_STATE: imxrt_usbd::EndpointState<6> = imxrt_usbd::EndpointState::new();
+static ENDPOINT_STATE: imxrt_usbd::EndpointState<MAX_ENDPOINTS> = imxrt_usbd::EndpointState::new();
 
 type Bus = imxrt_usbd::BusAdapter;
 type BusAllocator = usb_device::bus::UsbBusAllocator<Bus>;
@@ -25,6 +26,17 @@ static mut CLASS: MaybeUninit<Class<'static>> = MaybeUninit::uninit();
 static mut DEVICE: MaybeUninit<Device<'static>> = MaybeUninit::uninit();
 static mut CONSUMER: MaybeUninit<crate::Consumer> = MaybeUninit::uninit();
 
+type Serial<'a> = usbd_serial::SerialPort<'a, Bus>;
+static mut SERIAL: MaybeUninit<Serial<'static>> = MaybeUninit::uninit();
+
+/// Number of CDC/ACM class interfaces
+const MAX_INTERFACES: usize = if cfg!(feature = "usbd-composite") {
+    2
+} else {
+    1
+};
+/// Number of endpoints, in total (EP0 + CDC Data + CDC Control).
+const MAX_ENDPOINTS: usize = 2 * (1 + 2 * MAX_INTERFACES);
 /// High-speed bulk endpoint limit.
 const MAX_PACKET_SIZE: usize = crate::config::USB_BULK_MPS;
 /// Size for control transfers on endpoint 0.
@@ -47,6 +59,7 @@ pub(crate) const VTABLE: crate::PollerVTable = crate::PollerVTable { poll };
 unsafe fn poll() {
     static mut CONFIGURED: bool = false;
     let device = DEVICE.assume_init_mut();
+    let serial = SERIAL.assume_init_mut();
     let class = CLASS.assume_init_mut();
 
     // Is there a CDC class event, like a completed transfer? If so, check
@@ -57,7 +70,7 @@ unsafe fn poll() {
     // long interval. That interval expires, and we see tons of data in the consumer.
     // We should write that out as fast as possible, even if the timer hasn't elapsed.
     // That's the behavior provided by the class_event flag.
-    let class_event = device.poll(&mut [class]);
+    let class_event = device.poll(&mut [class, serial]);
     let timer_event = device.bus().gpt_mut(GPT_INSTANCE, |gpt| {
         let mut elapsed = false;
         while gpt.is_elapsed() {
@@ -167,9 +180,22 @@ pub(crate) unsafe fn init<P: imxrt_usbd::Peripherals>(
         CLASS.write(class);
     }
 
+    #[cfg(feature = "usbd-composite")]
     {
-        let device = usb_device::device::UsbDeviceBuilder::new(bus, VID_PID)
-            .device_class(usbd_serial::USB_CLASS_CDC)
+        let serial = usbd_serial::SerialPort::new(bus);
+        SERIAL.write(serial);
+    }
+
+    {
+        let builder = if cfg!(feature = "usbd-composite") {
+            usb_device::device::UsbDeviceBuilder::new(bus, VID_PID) //
+                .composite_with_iads()
+        } else {
+            usb_device::device::UsbDeviceBuilder::new(bus, VID_PID)
+                .device_class(usbd_serial::USB_CLASS_CDC)
+        };
+
+        let device = builder
             .max_packet_size_0(EP0_CONTROL_PACKET_SIZE as u8)
             .and_then(|d| d.strings(&[config.descriptors()]))
             .map(usb_device::device::UsbDeviceBuilder::build)

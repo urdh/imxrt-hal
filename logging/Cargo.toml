@@ -49,6 +49,7 @@ workspace = true
 default = ["defmt", "log", "lpuart", "usbd"]
 lpuart = ["imxrt-hal"]
 usbd = ["dep:imxrt-usbd", "dep:usb-device", "dep:usbd-serial"]
+usbd-composite = ["usbd", "usb-device?/control-buffer-256"]
 defmt = ["dep:defmt"]
 
 [dev-dependencies.cortex-m]
