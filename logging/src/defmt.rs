@@ -148,7 +148,7 @@ unsafe impl defmt::Logger for Logger {
 pub fn usb_with_config<P: imxrt_usbd::Peripherals>(
     peripherals: P,
     interrupts: super::Interrupts,
-    backend_config: &crate::UsbdConfig,
+    backend_config: &crate::UsbdConfig<'static>,
 ) -> Result<crate::Poller, crate::AlreadySetError<P>> {
     let (producer, consumer) = match crate::BUFFER.try_split() {
         Ok((prod, cons)) => (prod, cons),

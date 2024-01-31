@@ -89,7 +89,7 @@ pub fn usbd_with_config<P: imxrt_usbd::Peripherals>(
     peripherals: P,
     interrupts: super::Interrupts,
     frontend_config: &LoggingConfig,
-    backend_config: &crate::UsbdConfig,
+    backend_config: &crate::UsbdConfig<'static>,
 ) -> Result<Poller, crate::AlreadySetError<P>> {
     let (producer, consumer) = match BUFFER.try_split() {
         Ok((prod, cons)) => (prod, cons),

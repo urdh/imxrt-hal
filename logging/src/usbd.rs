@@ -1,7 +1,7 @@
 //! USB serial (CDC) backend using imxrt-usbd.
 
 use core::mem::MaybeUninit;
-use usb_device::device::UsbDeviceState;
+use usb_device::device::{StringDescriptors, UsbDeviceState};
 
 const VID_PID: usb_device::device::UsbVidPid = usb_device::device::UsbVidPid(0x5824, 0x27dd);
 const PRODUCT: &str = "imxrt-log";
@@ -138,7 +138,7 @@ pub(crate) unsafe fn init<P: imxrt_usbd::Peripherals>(
     peripherals: P,
     interrupts: crate::Interrupts,
     consumer: super::Consumer,
-    config: &UsbdConfig,
+    config: &UsbdConfig<'static>,
 ) {
     CONSUMER.write(consumer);
 
@@ -168,11 +168,10 @@ pub(crate) unsafe fn init<P: imxrt_usbd::Peripherals>(
     }
 
     {
-        let strings = usb_device::device::StringDescriptors::default().product(PRODUCT);
         let device = usb_device::device::UsbDeviceBuilder::new(bus, VID_PID)
             .device_class(usbd_serial::USB_CLASS_CDC)
             .max_packet_size_0(EP0_CONTROL_PACKET_SIZE as u8)
-            .and_then(|d| d.strings(&[strings]))
+            .and_then(|d| d.strings(&[config.descriptors()]))
             .map(usb_device::device::UsbDeviceBuilder::build)
             .expect("bad usb device configuration");
 
@@ -214,20 +213,22 @@ pub(crate) unsafe fn init<P: imxrt_usbd::Peripherals>(
 /// ```
 #[derive(PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct UsbdConfigBuilder {
-    cfg: UsbdConfig,
+pub struct UsbdConfigBuilder<'a> {
+    cfg: UsbdConfig<'a>,
 }
 
-impl UsbdConfigBuilder {
+impl UsbdConfigBuilder<'_> {
     /// Create a new builder with the default values.
     pub const fn new() -> Self {
         Self {
             cfg: UsbdConfig::default(),
         }
     }
+}
 
+impl<'a> UsbdConfigBuilder<'a> {
     /// Build the USB device configuration.
-    pub const fn build(self) -> UsbdConfig {
+    pub const fn build(self) -> UsbdConfig<'a> {
         self.cfg
     }
 
@@ -241,6 +242,24 @@ impl UsbdConfigBuilder {
         self.cfg.poll_interval_us = poll_interval_us;
         self
     }
+
+    /// Set the USB device "serial number" string descriptor
+    pub const fn serial_number(mut self, serial_number: &'a str) -> Self {
+        self.cfg.serial = Some(serial_number);
+        self
+    }
+
+    /// Set the USB device "product" string descriptor
+    pub const fn product(mut self, product: &'a str) -> Self {
+        self.cfg.product = Some(product);
+        self
+    }
+
+    /// Set the USB device "manufacturer" string descriptor
+    pub const fn manufacturer(mut self, manufacturer: &'a str) -> Self {
+        self.cfg.mfg = Some(manufacturer);
+        self
+    }
 }
 
 /// A USB device configuration.
@@ -248,15 +267,32 @@ impl UsbdConfigBuilder {
 /// Use [`UsbdConfigBuilder`] to build a configuration.
 #[derive(PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct UsbdConfig {
+pub struct UsbdConfig<'a> {
     poll_interval_us: u32,
+    serial: Option<&'a str>,
+    product: Option<&'a str>,
+    mfg: Option<&'a str>,
 }
 
-impl UsbdConfig {
+impl UsbdConfig<'_> {
     /// Returns a configuration with the default values.
     const fn default() -> Self {
         Self {
             poll_interval_us: 4_000,
+            serial: None,
+            product: Some(PRODUCT),
+            mfg: None,
         }
+    }
+}
+
+impl<'a> UsbdConfig<'a> {
+    /// Constructs a `StringDescriptors` structure for this config
+    fn descriptors(&self) -> StringDescriptors<'a> {
+        let strings = usb_device::device::StringDescriptors::default();
+        let strings = self.serial.map_or(strings, |v| strings.serial_number(v));
+        let strings = self.product.map_or(strings, |v| strings.product(v));
+        let strings = self.mfg.map_or(strings, |v| strings.manufacturer(v));
+        strings
     }
 }

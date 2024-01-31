@@ -10,6 +10,9 @@ The `imxrt-usbd` dependency has been updated, pulling in `usb-device` 0.3.x
 and `usbd-serial` 0.2.x; this is a breaking change for `imxrt-hal` when using
 the `usbd` feature, since it changes the public API.
 
+`imxrt-log` now supports configuring the product, serial number, and manufacturer
+of the constructed USB device.
+
 ## [0.5.4] 2023-11-26
 
 Add CCM APIs for configuring FlexIO clocks on 1000 targets.
